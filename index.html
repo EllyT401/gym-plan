@@ -44,7 +44,6 @@ input[type=date]{font:inherit;color:var(--ink);background:var(--input);border:1p
 .banner{background:var(--warn-soft);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:14px;margin:10px 0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 1px 2px rgba(20,33,26,.05)}
 .card.rehab{border-color:var(--acc-mid);border-left:5px solid var(--acc)}
-.card.opt{border-style:dashed}
 .card h3{margin:0;font-size:17px;letter-spacing:-.01em}
 .card h4{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--acc)}
 .rx{font-weight:650;color:var(--acc);font-size:15px}
@@ -116,13 +115,13 @@ th{color:var(--mute);font-weight:600;font-size:12px}
       <input type="date" id="date" aria-label="Session date">
       <button class="btn sm" id="todayBtn">Today</button>
     </div>
-    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Program days"></div>
   </header>
   <main id="main"></main>
 </div>
 
 <div id="rest" role="timer"><span id="restTxt">Rest 0:00</span><button id="restPlus">+15s</button><button id="restX" aria-label="Dismiss timer">✕</button></div>
-<div id="sheet" hidden><div class="sheetbox"><div class="row-between"><b id="sheetTitle"></b><button class="btn sm" id="sheetX">Close</button></div><div id="sheetBody"></div></div></div>
+<div id="sheet" hidden><div class="sheetbox" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="row-between"><b id="sheetTitle"></b><button class="btn sm" id="sheetX" aria-label="Close dialog">Close</button></div><div id="sheetBody"></div></div></div>
 
 <nav class="bottom">
   <button data-view="plan" class="sel"><span>🏋️</span>Workout</button>
@@ -209,7 +208,7 @@ const DAYS=[
   E('tri-pushdown','Tricep pulldown','load',3,'3 × 10–12','','',{kg:14}),
   E('bicep-curl','Bicep curl','load',3,'3 × 10–12','','',{kg:7,wl:'each hand'}),
   CRUNCH]},
- {title:'Reformer Pilates',sub:'Active rest',rehab:'opt',ex:[
+ {title:'Reformer Pilates',sub:'Active rest',ex:[
   E('pilates','Reformer Pilates','tick',1,'1 session','Let your instructor know about the 90° hip rule.')]},
  {title:'Full body conditioning',sub:'Mix-it-up day',rehab:'full',ex:COND_TUE},
  {title:'Rest day',sub:'Complete rest',ex:[]},
@@ -365,7 +364,7 @@ const dateEl=document.getElementById('date');
 
 function renderTabs(){
   const todayDay=dayForDate(isoToday());
-  tabsEl.innerHTML=DAYS.map((d,i)=>`<button class="tab${i===curDay?' sel':''}${(i===todayDay&&curDate===isoToday())?' today':''}" data-day="${i}" role="tab"><small>${dowName(i)}</small><b>Day ${i+1}</b></button>`).join('');
+  tabsEl.innerHTML=DAYS.map((d,i)=>`<button class="tab${i===curDay?' sel':''}${(i===todayDay&&curDate===isoToday())?' today':''}" data-day="${i}" role="tab" aria-selected="${i===curDay?'true':'false'}"><small>${dowName(i)}</small><b>Day ${i+1}</b></button>`).join('');
   dateEl.value=curDate;
 }
 
@@ -382,29 +381,29 @@ function exCard(ex,en){
       rows+=`<div class="srow" data-i="${i}"><span class="sn">${i+1}</span>
         <input class="f" data-k="w" inputmode="decimal" placeholder="${esc(lp.w||ex.kg||'kg')}" value="${esc(s.w||'')}" aria-label="Set ${i+1} weight in kg">
         <input class="f" data-k="r" inputmode="numeric" placeholder="${esc(lp.r||'reps')}" value="${esc(s.r||'')}" aria-label="Set ${i+1} reps">
-        <button class="tick${on}" aria-label="Set ${i+1} done">✓</button></div>`;
+        <button class="tick${on}" aria-pressed="${s.d?'true':'false'}" aria-label="Set ${i+1} done">✓</button></div>`;
     } else if(ex.type==='bw'){
       rows+=`<div class="srow one" data-i="${i}"><span class="sn">${i+1}</span>
         <input class="f" data-k="r" inputmode="numeric" placeholder="${esc(lp.r||'reps')}" value="${esc(s.r||'')}" aria-label="Set ${i+1} reps">
-        <button class="tick${on}" aria-label="Set ${i+1} done">✓</button></div>`;
+        <button class="tick${on}" aria-pressed="${s.d?'true':'false'}" aria-label="Set ${i+1} done">✓</button></div>`;
     } else if(ex.type==='time'){
       rows+=`<div class="srow one" data-i="${i}"><span class="sn">${i+1}</span>
         <input class="f" data-k="s" inputmode="numeric" placeholder="${esc(lp.s||'seconds')}" value="${esc(s.s||'')}" aria-label="Set ${i+1} seconds">
-        <button class="tick${on}" aria-label="Set ${i+1} done">✓</button></div>`;
+        <button class="tick${on}" aria-pressed="${s.d?'true':'false'}" aria-label="Set ${i+1} done">✓</button></div>`;
     } else if(ex.type==='cardio'){
       rows+=`<div class="srow two" data-i="${i}"><span class="sn"></span>
         <input class="f" data-k="m" inputmode="decimal" placeholder="${esc(lp.m||ex.dm||'minutes')}" value="${esc(s.m||'')}" aria-label="Minutes">
         <input class="f" data-k="x" placeholder="${esc(lp.x||ex.xph||'incline / level')}" value="${esc(s.x||'')}" aria-label="Incline or level">
-        <button class="tick${on}" aria-label="Done">✓</button></div>`;
+        <button class="tick${on}" aria-pressed="${s.d?'true':'false'}" aria-label="Done">✓</button></div>`;
     } else {
-      rows+=`<div class="srow" style="grid-template-columns:1fr 48px" data-i="${i}"><span class="muted">${esc(ex.rx)}</span><button class="tick${on}" aria-label="Done">✓</button></div>`;
+      rows+=`<div class="srow" style="grid-template-columns:1fr 48px" data-i="${i}"><span class="muted">${esc(ex.rx)}</span><button class="tick${on}" aria-pressed="${s.d?'true':'false'}" aria-label="Done">✓</button></div>`;
     }
   }
   const canFill=ex.type!=='tick'&&(l||(ex.type==='load'&&ex.kg));
   return `<section class="card" data-ex="${ex.id}"${ex._slot?` data-slot="${ex._slot}"`:''}>
     ${ex._slot?`<span class="slotchip">${SLOTNAME[ex._slot]}</span>`:''}
     <div class="row-between"><div><h3>${esc(ex.name)}</h3><div class="rx">${esc(ex.rx)}</div></div>
-    <div class="btns">${ex._slot?'<button class="btn sm swap">🔄 Swap</button>':''}${canFill?`<button class="btn sm useLast">${l?'Use last':'Use plan'}</button>`:''}</div></div>
+    <div class="btns">${ex._slot?`<button class="btn sm swap" aria-haspopup="dialog" aria-label="Swap ${esc(ex.name)}">🔄 Swap</button>`:''}${canFill?`<button class="btn sm useLast">${l?'Use last':'Use plan'}</button>`:''}</div></div>
     ${ex.note?`<div class="note">${esc(ex.note)}</div>`:''}
     ${ex.flag?`<span class="flag">⚠ ${esc(ex.flag)}</span>`:''}
     ${planKg&&ex.type==='load'?`<div class="plan">Plan weight: ${esc(planKg)}</div>`:''}
@@ -422,12 +421,12 @@ function renderPlan(){
     <div class="banner"><b>Hip rule:</b> never let your hips drop below 90°. Stop the exercise if you get sharp or worsening pain and check with your physio.</div>`;
   if(d.banner) h+=`<div class="banner">${esc(d.banner)}</div>`;
   if(d.rehab){
-    h+=`<section class="card rehab${d.rehab==='opt'?' opt':''}"><h4>${d.rehab==='opt'?'Rehab block · optional today':'Rehab · before you warm up'}</h4>`;
+    h+=`<section class="card rehab"><h4>Rehab · before you warm up</h4>`;
     REHAB.forEach(r=>{
       const sets=exSets(en,r);
       h+=`<div class="rehab-item" data-ex="${r.id}"><b>${esc(r.name)}</b> <span class="rx">${esc(r.rx)}</span>
         <div class="note">${esc(r.note)}</div>
-        <div class="chips">${sets.slice(0,r.sets).map((s,i)=>`<button class="chip${s.d?' on':''}" data-i="${i}" aria-label="Set ${i+1} done">Set ${i+1}</button>`).join('')}</div></div>`;
+        <div class="chips">${sets.slice(0,r.sets).map((s,i)=>`<button class="chip${s.d?' on':''}" data-i="${i}" aria-pressed="${s.d?'true':'false'}" aria-label="Set ${i+1} done">Set ${i+1}</button>`).join('')}</div></div>`;
     });
     h+=`</section>`;
   }
@@ -442,7 +441,7 @@ function renderPlan(){
   });
   h+=`<section class="card"><h4>How did your hips feel?</h4>
     <div class="muted">0 = no pain, 10 = worst. Log it after the session.</div>
-    <div class="pains" id="pains">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<button class="pc${n>=4?' hi':''}${en.pain===n?' on':''}" data-v="${n}">${n}</button>`).join('')}</div>
+    <div class="pains" id="pains" role="group" aria-label="Hip pain rating, 0 to 10">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<button class="pc${n>=4?' hi':''}${en.pain===n?' on':''}" data-v="${n}" aria-pressed="${en.pain===n?'true':'false'}" aria-label="Pain ${n} out of 10">${n}</button>`).join('')}</div>
     <div id="painmsg" class="note"></div>
     <textarea class="f" id="snote" placeholder="Notes: how it felt, what to change next time…"></textarea></section>`;
   main.innerHTML=h;
@@ -464,29 +463,56 @@ function updateProgress(){
 
 /* ---------- SWAP SHEET ---------- */
 const sheet=document.getElementById('sheet'),sheetBody=document.getElementById('sheetBody'),sheetTitle=document.getElementById('sheetTitle');
-let sheetSlot=null;
-function openSheet(slot){
+let sheetSlot=null,sheetOpener=null;
+const inertEls=()=>[document.querySelector('.wrap'),document.querySelector('nav.bottom'),document.getElementById('rest')];
+function openSheet(slot,opener){
   sheetSlot=slot;
+  sheetOpener=opener||document.activeElement;
   const curEx=dayEx(curDay,curDate).find(e=>e._slot===slot);
   const cur=curEx?curEx.id:'';
   const all=POOL[slot].concat(S.custom[slot]||[]);
   sheetTitle.textContent=SLOTNAME[slot]+': choose a movement';
   sheetBody.innerHTML=`<div class="muted" style="margin-top:6px">Applies to this session only.</div>`+
-    all.map(e=>`<button class="opt${e.id===cur?' cur':''}" data-id="${e.id}"><span><b>${esc(e.name)}</b><small>${esc(e.rx)}${e.kg?' · plan '+e.kg+' kg':''}</small></span>${e.id===cur?'<span>✓</span>':''}</button>`).join('')+
-    `<div class="addown"><input class="f" id="ownName" placeholder="Add your own movement…"><button class="btn pri" id="ownAdd">Add</button></div>`;
+    all.map(e=>`<button class="opt${e.id===cur?' cur':''}" data-id="${e.id}"${e.id===cur?' aria-current="true"':''}><span><b>${esc(e.name)}</b><small>${esc(e.rx)}${e.kg?' · plan '+e.kg+' kg':''}</small></span>${e.id===cur?'<span aria-hidden="true">✓</span>':''}</button>`).join('')+
+    `<div class="addown"><input class="f" id="ownName" placeholder="Add your own movement…" aria-label="Name of your own movement"><button class="btn pri" id="ownAdd">Add</button></div>`;
   sheet.hidden=false;
+  inertEls().forEach(el=>{ if(el) el.inert=true; });
+  const first=sheetBody.querySelector('.opt.cur')||sheetBody.querySelector('.opt')||document.getElementById('sheetX');
+  first.focus();
 }
-function closeSheet(){ sheet.hidden=true; sheetSlot=null; }
-document.getElementById('sheetX').onclick=closeSheet;
+function closeSheet(restoreFocus){
+  const slot=sheetSlot;
+  sheet.hidden=true; sheetSlot=null;
+  inertEls().forEach(el=>{ if(el) el.inert=false; });
+  if(restoreFocus!==false) focusSwap(slot,sheetOpener);
+}
+function focusSwap(slot,opener){
+  let el=opener;
+  if(!el||!document.body.contains(el)) el=main.querySelector('[data-slot="'+slot+'"] .swap');
+  if(el) el.focus();
+}
+document.getElementById('sheetX').onclick=()=>closeSheet();
 sheet.addEventListener('click',e=>{
   if(e.target===sheet){ closeSheet(); return; }
   const o=e.target.closest('.opt');
-  if(o&&sheetSlot){ setOver(sheetSlot,o.dataset.id); closeSheet(); renderPlan(); return; }
+  if(o&&sheetSlot){ const slot=sheetSlot; setOver(slot,o.dataset.id); closeSheet(false); renderPlan(); focusSwap(slot,null); return; }
   if(e.target.id==='ownAdd'&&sheetSlot){
-    const inp=document.getElementById('ownName'), name=inp.value.trim(); if(!name) return;
+    const inp=document.getElementById('ownName'), name=inp.value.trim(); if(!name){ inp.focus(); return; }
+    const slot=sheetSlot;
     const ex=E('c-'+Date.now().toString(36),name,'load',3,'3 × 8–12','Added by you.');
-    (S.custom[sheetSlot]=S.custom[sheetSlot]||[]).push(ex);
-    rebuildMap(); setOver(sheetSlot,ex.id); closeSheet(); renderPlan();
+    (S.custom[slot]=S.custom[slot]||[]).push(ex);
+    rebuildMap(); setOver(slot,ex.id); closeSheet(false); renderPlan(); focusSwap(slot,null);
+  }
+});
+document.addEventListener('keydown',e=>{
+  if(sheet.hidden) return;
+  if(e.key==='Escape'){ e.preventDefault(); closeSheet(); return; }
+  if(e.key==='Tab'){
+    const f=Array.from(sheet.querySelectorAll('button,input')).filter(x=>!x.disabled);
+    if(!f.length) return;
+    const first=f[0], last=f[f.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
   }
 });
 function shuffleAll(){
@@ -634,12 +660,12 @@ main.addEventListener('click',e=>{
   if(id==='shuffleAll'){ shuffleAll(); return; }
   if(id==='resetPicks'){ resetPicks(); return; }
   const sw=t.closest('.swap');
-  if(sw){ openSheet(sw.closest('[data-slot]').dataset.slot); return; }
+  if(sw){ openSheet(sw.closest('[data-slot]').dataset.slot,sw); return; }
   const tick=t.closest('.tick');
   if(tick){
     const card=tick.closest('[data-ex]'), row=tick.closest('[data-i]');
     const ex=EXMAP[card.dataset.ex], en=getEntry(true), sets=exSets(en,ex), s=sets[+row.dataset.i];
-    s.d=!s.d; tick.classList.toggle('on',s.d); touch(en); updateProgress();
+    s.d=!s.d; tick.classList.toggle('on',s.d); tick.setAttribute('aria-pressed',s.d?'true':'false'); touch(en); updateProgress();
     if(s.d&&(ex.type==='load'||ex.type==='bw'||ex.type==='time')) startRest(S.settings.rest);
     return;
   }
@@ -647,7 +673,7 @@ main.addEventListener('click',e=>{
   if(chip){
     const item=chip.closest('[data-ex]'); const r=REHAB.find(x=>x.id===item.dataset.ex);
     const en=getEntry(true), sets=exSets(en,r), s=sets[+chip.dataset.i];
-    s.d=!s.d; chip.classList.toggle('on',s.d); touch(en); updateProgress();
+    s.d=!s.d; chip.classList.toggle('on',s.d); chip.setAttribute('aria-pressed',s.d?'true':'false'); touch(en); updateProgress();
     if(s.d) startRest(30);
     return;
   }
@@ -662,7 +688,7 @@ main.addEventListener('click',e=>{
   const pc=t.closest('.pc');
   if(pc){
     const en=getEntry(true), v=+pc.dataset.v; en.pain=(en.pain===v?null:v); touch(en);
-    document.querySelectorAll('.pc').forEach(b=>b.classList.toggle('on',+b.dataset.v===en.pain)); updatePainMsg(); return;
+    document.querySelectorAll('.pc').forEach(b=>{ const on=+b.dataset.v===en.pain; b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false'); }); updatePainMsg(); return;
   }
 });
 main.addEventListener('change',e=>{
