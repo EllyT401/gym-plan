@@ -88,6 +88,12 @@ nav.bottom button span{display:block;font-size:20px;line-height:1.1}
 .opt small{display:block;color:var(--mute)}
 .opt.cur{border-color:var(--acc);background:var(--acc-soft)}
 .addown{display:flex;gap:8px;margin-top:14px}
+.sheetbox h4{margin:16px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--acc)}
+.form2{display:grid;gap:8px;margin-top:8px}
+.form2 .two{display:grid;grid-template-columns:1fr 90px;gap:8px}
+.opt[hidden]{display:none}
+table.prev td,table.prev th{padding:8px 4px}
+table.prev tr.chg td{background:var(--acc-soft)}
 .wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:8px}
 .wk div{text-align:center;background:var(--input);border:1px solid var(--line);border-radius:10px;padding:6px 2px;font-size:12px;color:var(--mute)}
 .wk b{display:block;font-size:15px;color:var(--ink)}
@@ -238,21 +244,25 @@ const DAYS=[
 
 /* ---------- STATE & STORAGE ---------- */
 const LS='hiprebuild.v2';
-let S={entries:{},settings:{startDow:0,rest:60},over:{},custom:{}};
+let S={entries:{},settings:{startDow:0,rest:60},over:{},custom:{},sched:{}};
 try{
   const raw=localStorage.getItem(LS);
   if(raw){ const p=JSON.parse(raw);
     if(p&&p.entries) S.entries=p.entries;
     if(p&&p.settings) Object.assign(S.settings,p.settings);
     if(p&&p.over) S.over=p.over;
-    if(p&&p.custom) S.custom=p.custom; }
+    if(p&&p.custom) S.custom=p.custom;
+    if(p&&p.sched) S.sched=p.sched; }
 }catch(e){}
+const FREE=DAYS.length;
+DAYS.push({title:'Free day',sub:'Nothing scheduled',ex:[]});
 const EXMAP={};
 function rebuildMap(){
   Object.keys(EXMAP).forEach(k=>delete EXMAP[k]);
   DAYS.forEach(d=>d.ex.forEach(e=>{ if(!e.slot&&!EXMAP[e.id]) EXMAP[e.id]=e; }));
   SLOTS.forEach(s=>POOL[s].forEach(e=>{ if(!EXMAP[e.id]) EXMAP[e.id]=e; }));
   Object.keys(S.custom).forEach(s=>(S.custom[s]||[]).forEach(e=>{ EXMAP[e.id]=e; }));
+  Object.values(S.entries).forEach(en=>(en.extra||[]).forEach(x=>{ if(x.def) EXMAP[x.id]=x.def; }));
 }
 rebuildMap();
 let view='plan';
@@ -265,7 +275,11 @@ function isoToday(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth
 function parseISO(s){const a=s.split('-').map(Number);return new Date(a[0],a[1]-1,a[2])}
 function toISO(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
 function addDays(s,n){const d=parseISO(s);d.setDate(d.getDate()+n);return toISO(d)}
-function dayForDate(s){return (parseISO(s).getDay()-S.settings.startDow+7)%7}
+function posOf(date){return (parseISO(date).getDay()-S.settings.startDow+7)%7}
+function weekStart(date){return addDays(date,-posOf(date))}
+function schedFor(ws){return S.sched[ws]||[0,1,2,3,4,5,6]}
+function assignedDay(date){return schedFor(weekStart(date))[posOf(date)]}
+function dayForDate(s){return assignedDay(s)}
 function dowName(i){return DOW[(S.settings.startDow+i)%7]}
 function wsSun(date){return addDays(date,-parseISO(date).getDay())}
 function key(date,day){return date+'|'+day}
@@ -363,9 +377,15 @@ const tabsEl=document.getElementById('tabs');
 const dateEl=document.getElementById('date');
 
 function renderTabs(){
-  const todayDay=dayForDate(isoToday());
-  tabsEl.innerHTML=DAYS.map((d,i)=>`<button class="tab${i===curDay?' sel':''}${(i===todayDay&&curDate===isoToday())?' today':''}" data-day="${i}" role="tab" aria-selected="${i===curDay?'true':'false'}"><small>${dowName(i)}</small><b>Day ${i+1}</b></button>`).join('');
+  const ws=weekStart(curDate), sch=schedFor(ws);
+  tabsEl.innerHTML=sch.map((d,i)=>{
+    const date=addDays(ws,i), sel=date===curDate, moved=d!==i;
+    const label=d===FREE?'Free':'Day '+(d+1);
+    return `<button class="tab${sel?' sel':''}${date===isoToday()?' today':''}" data-date="${date}" role="tab" aria-selected="${sel?'true':'false'}" aria-label="${DOWL[(S.settings.startDow+i)%7]} ${parseISO(date).getDate()}: ${label}${moved?' (moved)':''}"><small>${dowName(i)} ${parseISO(date).getDate()}</small><b>${label}${moved?' ↔':''}</b></button>`;
+  }).join('');
   dateEl.value=curDate;
+  const selTab=tabsEl.querySelector('.tab.sel');
+  if(selTab&&tabsEl.scrollTo) tabsEl.scrollTo({left:Math.max(0,selTab.offsetLeft-tabsEl.clientWidth/2+selTab.offsetWidth/2)});
 }
 
 function exCard(ex,en){
@@ -401,9 +421,9 @@ function exCard(ex,en){
   }
   const canFill=ex.type!=='tick'&&(l||(ex.type==='load'&&ex.kg));
   return `<section class="card" data-ex="${ex.id}"${ex._slot?` data-slot="${ex._slot}"`:''}>
-    ${ex._slot?`<span class="slotchip">${SLOTNAME[ex._slot]}</span>`:''}
+    ${ex._slot?`<span class="slotchip">${SLOTNAME[ex._slot]}</span>`:ex._extra?'<span class="slotchip">Extra</span>':''}
     <div class="row-between"><div><h3>${esc(ex.name)}</h3><div class="rx">${esc(ex.rx)}</div></div>
-    <div class="btns">${ex._slot?`<button class="btn sm swap" aria-haspopup="dialog" aria-label="Swap ${esc(ex.name)}">🔄 Swap</button>`:''}${canFill?`<button class="btn sm useLast">${l?'Use last':'Use plan'}</button>`:''}</div></div>
+    <div class="btns">${ex._extra?`<button class="btn sm rmx" aria-label="Remove ${esc(ex.name)}">Remove</button>`:''}${ex._slot?`<button class="btn sm swap" aria-haspopup="dialog" aria-label="Swap ${esc(ex.name)}">🔄 Swap</button>`:''}${canFill?`<button class="btn sm useLast">${l?'Use last':'Use plan'}</button>`:''}</div></div>
     ${ex.note?`<div class="note">${esc(ex.note)}</div>`:''}
     ${ex.flag?`<span class="flag">⚠ ${esc(ex.flag)}</span>`:''}
     ${planKg&&ex.type==='load'?`<div class="plan">Plan weight: ${esc(planKg)}</div>`:''}
@@ -416,8 +436,10 @@ function renderPlan(){
   const en=getEntry(true);
   const wd=DOWL[parseISO(curDate).getDay()];
   const list=dayEx(curDay,curDate);
-  let h=`<div class="dayhead"><h2>Day ${curDay+1}: ${esc(d.title)}</h2><p>${esc(d.sub)} · ${wd} ${fmtDate(curDate)}</p>
-    <div class="bar"><i id="barfill"></i></div><div class="pct" id="pct"></div></div>
+  const isFree=curDay===FREE, movedNote=posOf(curDate)!==curDay?' · moved this week':'';
+  let h=`<div class="dayhead"><h2>${isFree?esc(d.title):'Day '+(curDay+1)+': '+esc(d.title)}</h2><p>${esc(d.sub)} · ${wd} ${fmtDate(curDate)}${movedNote}</p>
+    <div class="bar"><i id="barfill"></i></div><div class="pct" id="pct"></div>
+    <div style="margin-top:8px"><button class="btn sm" id="moveBtn" aria-haspopup="dialog">↔ Move this day</button></div></div>
     <div class="banner"><b>Hip rule:</b> never let your hips drop below 90°. Stop the exercise if you get sharp or worsening pain and check with your physio.</div>`;
   if(d.banner) h+=`<div class="banner">${esc(d.banner)}</div>`;
   if(d.rehab){
@@ -430,7 +452,7 @@ function renderPlan(){
     });
     h+=`</section>`;
   }
-  if(!list.length) h+=`<section class="card"><h3>Nothing scheduled 😌</h3><div class="note">Complete rest today. See you tomorrow.</div></section>`;
+  if(!list.length) h+=`<section class="card"><h3>Nothing scheduled 😌</h3><div class="note">${isFree?'A free day this week. Add an extra below if you feel like moving.':'Complete rest today. See you tomorrow.'}</div></section>`;
   let firstSlot=true;
   list.forEach(ex=>{
     if(ex._slot&&firstSlot){
@@ -439,6 +461,10 @@ function renderPlan(){
     }
     h+=exCard(ex,en);
   });
+  const extras=(en.extra||[]).map(x=>EXMAP[x.id]).filter(Boolean);
+  h+=`<div class="slotbar"><span>Extras</span><div class="btns"><button class="btn sm" id="addExtra" aria-haspopup="dialog">➕ Add extra</button></div></div>`;
+  if(!extras.length) h+=`<div class="muted" style="margin:8px 2px">Did something on top of the plan? Add it here. Extras don’t count toward the day’s percentage.</div>`;
+  extras.forEach(x=>{ h+=exCard(Object.assign({},x,{_extra:true}),en); });
   h+=`<section class="card"><h4>How did your hips feel?</h4>
     <div class="muted">0 = no pain, 10 = worst. Log it after the session.</div>
     <div class="pains" id="pains" role="group" aria-label="Hip pain rating, 0 to 10">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<button class="pc${n>=4?' hi':''}${en.pain===n?' on':''}" data-v="${n}" aria-pressed="${en.pain===n?'true':'false'}" aria-label="Pain ${n} out of 10">${n}</button>`).join('')}</div>
@@ -463,9 +489,10 @@ function updateProgress(){
 
 /* ---------- SWAP SHEET ---------- */
 const sheet=document.getElementById('sheet'),sheetBody=document.getElementById('sheetBody'),sheetTitle=document.getElementById('sheetTitle');
-let sheetSlot=null,sheetOpener=null;
+let sheetSlot=null,sheetOpener=null,sheetMode=null;
 const inertEls=()=>[document.querySelector('.wrap'),document.querySelector('nav.bottom'),document.getElementById('rest')];
 function openSheet(slot,opener){
+  sheetMode='slot';
   sheetSlot=slot;
   sheetOpener=opener||document.activeElement;
   const curEx=dayEx(curDay,curDate).find(e=>e._slot===slot);
@@ -481,34 +508,150 @@ function openSheet(slot,opener){
   first.focus();
 }
 function closeSheet(restoreFocus){
-  const slot=sheetSlot;
-  sheet.hidden=true; sheetSlot=null;
+  const slot=sheetSlot, mode=sheetMode;
+  sheet.hidden=true; sheetSlot=null; sheetMode=null;
   inertEls().forEach(el=>{ if(el) el.inert=false; });
-  if(restoreFocus!==false) focusSwap(slot,sheetOpener);
+  if(restoreFocus!==false) focusSwap(slot,sheetOpener,mode);
 }
-function focusSwap(slot,opener){
+function focusSwap(slot,opener,mode){
   let el=opener;
-  if(!el||!document.body.contains(el)) el=main.querySelector('[data-slot="'+slot+'"] .swap');
+  if(!el||!document.body.contains(el)){
+    el=mode==='extra'?document.getElementById('addExtra'):mode==='move'?document.getElementById('moveBtn'):main.querySelector('[data-slot="'+slot+'"] .swap');
+  }
   if(el) el.focus();
 }
+function showSheet(title,html,focusSel){
+  sheetTitle.textContent=title; sheetBody.innerHTML=html; sheet.hidden=false;
+  inertEls().forEach(el=>{ if(el) el.inert=true; });
+  const f=(focusSel&&sheetBody.querySelector(focusSel))||sheetBody.querySelector('.opt')||document.getElementById('sheetX');
+  f.focus();
+}
 document.getElementById('sheetX').onclick=()=>closeSheet();
+
+/* ---- extras ---- */
+function openExtra(opener){
+  sheetMode='extra'; sheetSlot=null; sheetOpener=opener||document.activeElement;
+  const en=getEntry(true);
+  const taken=new Set(dayEx(curDay,curDate).map(e=>e.id).concat(REHAB.map(r=>r.id),(en.extra||[]).map(x=>x.id)));
+  const list=Object.values(EXMAP).filter(e=>e.type!=='tick'&&!taken.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  showSheet('Add an extra',
+   `<div class="muted" style="margin-top:6px">Extras are logged like any exercise and show in your history. They don’t count toward the day’s percentage.</div>
+    <h4>Type your own</h4>
+    <div class="form2"><input class="f" id="xName" placeholder="e.g. Pilates leg springs" aria-label="Name of the extra">
+     <div class="two"><select class="f" id="xType" aria-label="Type of exercise"><option value="load">Weights (kg and reps)</option><option value="bw">Reps only</option><option value="time">Time (seconds)</option><option value="cardio">Cardio (minutes)</option></select>
+     <input class="f" id="xSets" inputmode="numeric" value="3" aria-label="Number of sets"></div>
+     <button class="btn pri" id="xAdd">Add extra</button></div>
+    <h4>Or pick from the plan</h4>
+    <input class="f" id="xSearch" placeholder="Search the plan…" aria-label="Search exercises">
+    <div id="xList">${list.map(e=>`<button class="opt" data-xid="${e.id}"><span><b>${esc(e.name)}</b><small>${esc(e.rx)}</small></span></button>`).join('')}</div>`,'#xName');
+}
+function finishExtra(){ closeSheet(false); renderPlan(); const b=document.getElementById('addExtra'); if(b) b.focus(); }
+function addExtraFromPlan(id){
+  const en=getEntry(true); (en.extra=en.extra||[]).push({id}); touch(en); finishExtra();
+}
+function addTypedExtra(){
+  const nm=document.getElementById('xName'), name=nm.value.trim();
+  if(!name){ nm.focus(); return; }
+  const type=document.getElementById('xType').value;
+  let sets=parseInt(document.getElementById('xSets').value,10);
+  if(isNaN(sets)||sets<1) sets=1; sets=Math.min(sets,10);
+  if(type==='cardio') sets=1;
+  const id='x-'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const def=E(id,name,type,sets,type==='cardio'?'Extra':sets+(sets>1?' sets':' set'),'Added as an extra.');
+  EXMAP[id]=def;
+  const en=getEntry(true); (en.extra=en.extra||[]).push({id,def}); touch(en); finishExtra();
+}
+
+/* ---- move days (this week only) ---- */
+let moveCtx=null;
+const FULLWEEK=[0,1,2,3,4,5,6];
+function dayLabel(d){ return d===FREE?'Free day':'Day '+(d+1)+': '+DAYS[d].title; }
+function dowFull(i){ return DOWL[(S.settings.startDow+i)%7]; }
+function hasLog(date){
+  return Object.values(S.entries).some(e=>e.date===date&&(e.pain!=null||(e.note&&e.note.trim())||(e.extra&&e.extra.length)||Object.values(e.ex||{}).some(o=>(o.sets||[]).some(s=>s.d||s.w||s.r||s.s||s.m||s.x))));
+}
+function pushBackArr(sch,p){
+  const a=sch.slice(); let q=-1, dropped=null;
+  for(let i=p+1;i<7;i++){ const d=a[i]; if(d===FREE||DAYS[d].ex.length===0){ q=i; break; } }
+  if(q<0){ dropped=a[6]; q=6; }
+  for(let i=q;i>p;i--) a[i]=a[i-1];
+  a[p]=FREE;
+  return {arr:a,dropped:(dropped===FREE||dropped===null)?null:dropped};
+}
+function swapArr(sch,x,y){ const a=sch.slice(); const t=a[x]; a[x]=a[y]; a[y]=t; return a; }
+function openMove(opener){ sheetMode='move'; sheetSlot=null; sheetOpener=opener||document.activeElement; moveMenu(); }
+function moveMenu(){
+  const ws=weekStart(curDate); moveCtx={ws,pos:posOf(curDate)};
+  showSheet('Move '+dowFull(moveCtx.pos)+'’s workout',
+   `<div class="muted" style="margin-top:6px">Changes apply to this week only. Next week goes back to the normal schedule.</div>
+    <button class="opt" data-mv="push"><span><b>Push back by one day</b><small>Moves this workout and the days after it back one day. The next rest day absorbs it.</small></span></button>
+    <button class="opt" data-mv="swap"><span><b>Swap with another day</b><small>Trade places with any other day this week.</small></span></button>
+    ${S.sched[ws]?`<button class="opt" data-mv="reset"><span><b>Reset this week</b><small>Back to the normal schedule.</small></span></button>`:''}`);
+}
+function moveSwapList(){
+  const {ws,pos}=moveCtx, sch=schedFor(ws);
+  showSheet('Swap with…',
+   `<div class="muted" style="margin-top:6px">Pick the day to trade places with.</div>`+
+   sch.map((d,i)=>i===pos?'':`<button class="opt" data-swap="${i}"><span><b>${dowFull(i)} ${parseISO(addDays(ws,i)).getDate()}</b><small>${esc(dayLabel(d))}</small></span></button>`).join('')+
+   `<button class="btn" id="mvBack" style="margin-top:12px">Back</button>`);
+}
+function movePreview(arr,dropped){
+  const ws=moveCtx.ws, base=schedFor(ws);
+  const blocked=arr.map((d,i)=>(d!==base[i]&&hasLog(addDays(ws,i)))?dowFull(i):null).filter(Boolean);
+  moveCtx.arr=arr;
+  const rows=arr.map((d,i)=>{ const chg=d!==base[i]; return `<tr class="${chg?'chg':''}"><td>${dowFull(i)} ${parseISO(addDays(ws,i)).getDate()}</td><td>${esc(dayLabel(d))}${chg?` <small class="muted">(was ${esc(dayLabel(base[i]))})</small>`:''}</td></tr>`; }).join('');
+  showSheet('Check the new week',
+   `<table class="prev"><tr><th>Day</th><th>Workout</th></tr>${rows}</table>`+
+   (dropped!=null?`<div class="banner">${esc(dayLabel(dropped))} has no room this week, so it’s skipped. It returns next week as normal.</div>`:'')+
+   (blocked.length?`<div class="banner">${blocked.join(' and ')} ${blocked.length>1?'already have':'already has'} logged sets or notes, and moving would hide them. Pick a different change.</div>`:'')+
+   `<div class="btns" style="justify-content:flex-start;margin-top:12px"><button class="btn pri" id="mvConfirm"${blocked.length?' disabled':''}>Confirm</button><button class="btn" id="mvBack">Back</button></div>`,
+   blocked.length?'#mvBack':'#mvConfirm');
+}
+function applyMove(){
+  const {ws,arr}=moveCtx;
+  if(arr.every((d,i)=>d===i)) delete S.sched[ws]; else S.sched[ws]=arr;
+  persist(); closeSheet(false);
+  curDay=assignedDay(curDate); render();
+  const b=document.getElementById('moveBtn'); if(b) b.focus();
+}
+
 sheet.addEventListener('click',e=>{
   if(e.target===sheet){ closeSheet(); return; }
-  const o=e.target.closest('.opt');
-  if(o&&sheetSlot){ const slot=sheetSlot; setOver(slot,o.dataset.id); closeSheet(false); renderPlan(); focusSwap(slot,null); return; }
-  if(e.target.id==='ownAdd'&&sheetSlot){
+  const t=e.target, o=t.closest('.opt');
+  if(sheetMode==='move'){
+    if(o&&o.dataset.mv==='push'){ const r=pushBackArr(schedFor(moveCtx.ws),moveCtx.pos); movePreview(r.arr,r.dropped); return; }
+    if(o&&o.dataset.mv==='swap'){ moveSwapList(); return; }
+    if(o&&o.dataset.mv==='reset'){ moveCtx.arr=FULLWEEK.slice(); applyMove(); return; }
+    if(o&&o.dataset.swap!==undefined){ movePreview(swapArr(schedFor(moveCtx.ws),moveCtx.pos,+o.dataset.swap),null); return; }
+    if(t.id==='mvBack'){ moveMenu(); return; }
+    if(t.id==='mvConfirm'){ applyMove(); return; }
+    return;
+  }
+  if(sheetMode==='extra'){
+    if(o&&o.dataset.xid){ addExtraFromPlan(o.dataset.xid); return; }
+    if(t.id==='xAdd'){ addTypedExtra(); return; }
+    return;
+  }
+  if(o&&sheetSlot){ const slot=sheetSlot; setOver(slot,o.dataset.id); closeSheet(false); renderPlan(); focusSwap(slot,null,'slot'); return; }
+  if(t.id==='ownAdd'&&sheetSlot){
     const inp=document.getElementById('ownName'), name=inp.value.trim(); if(!name){ inp.focus(); return; }
     const slot=sheetSlot;
     const ex=E('c-'+Date.now().toString(36),name,'load',3,'3 × 8–12','Added by you.');
     (S.custom[slot]=S.custom[slot]||[]).push(ex);
-    rebuildMap(); setOver(slot,ex.id); closeSheet(false); renderPlan(); focusSwap(slot,null);
+    rebuildMap(); setOver(slot,ex.id); closeSheet(false); renderPlan(); focusSwap(slot,null,'slot');
+  }
+});
+sheet.addEventListener('input',e=>{
+  if(e.target.id==='xSearch'){
+    const q=e.target.value.toLowerCase();
+    sheetBody.querySelectorAll('#xList .opt').forEach(b=>{ b.hidden=!b.textContent.toLowerCase().includes(q); });
   }
 });
 document.addEventListener('keydown',e=>{
   if(sheet.hidden) return;
   if(e.key==='Escape'){ e.preventDefault(); closeSheet(); return; }
   if(e.key==='Tab'){
-    const f=Array.from(sheet.querySelectorAll('button,input')).filter(x=>!x.disabled);
+    const f=Array.from(sheet.querySelectorAll('button,input,select')).filter(x=>!x.disabled&&!x.hidden);
     if(!f.length) return;
     const first=f[0], last=f[f.length-1];
     if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
@@ -550,12 +693,12 @@ function spark(vals){
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.map(q=>q.join(',')).join(' ')}"/><circle cx="${pts[pts.length-1][0]}" cy="${pts[pts.length-1][1]}" r="3.5"/></svg>`;
 }
 function renderProgress(){
-  const ws=addDays(curDate,-dayForDate(curDate));
+  const ws=weekStart(curDate), sch=schedFor(ws);
   let wk='';
   for(let i=0;i<7;i++){
-    const dt=addDays(ws,i), en=S.entries[key(dt,i)];
-    const t=dayUnits(i,dt), n=doneUnits(en,i), p=t?Math.round(n/t*100):0;
-    wk+=`<div class="${t&&p>=90?'full':''}">${dowName(i)}<b>${t?(en?p+'%':'–'):'Rest'}</b></div>`;
+    const day=sch[i], dt=addDays(ws,i), en=S.entries[key(dt,day)];
+    const t=dayUnits(day,dt), n=doneUnits(en,day), p=t?Math.round(n/t*100):0;
+    wk+=`<div class="${t&&p>=90?'full':''}">${dowName(i)}<b>${day===FREE?'Free':(t?(en?p+'%':'–'):'Rest')}</b></div>`;
   }
   if(!EXMAP[progEx]) progEx=Object.keys(EXMAP)[0];
   const ex=EXMAP[progEx];
@@ -588,7 +731,7 @@ function renderSettings(){
    <section class="card"><h4>Schedule</h4>
      <label class="muted">Day 1 falls on</label>
      <select class="f" id="setStart">${days}</select>
-     <p class="note">Currently Sunday (upper body), with Pilates on Monday and rest on Wednesday. Only change this if the program’s days move.</p>
+     <p class="note">Currently Sunday (upper body), with Pilates on Monday and rest on Wednesday. Only change this if the program’s days move permanently. To shift a single week, use ↔ Move this day on the Workout tab.</p>
      <label class="muted">Auto rest timer after each set</label>
      <select class="f" id="setRest">${rests}</select></section>
    <section class="card"><h4>Saving your data</h4>
@@ -637,7 +780,7 @@ document.querySelector('nav.bottom').addEventListener('click',e=>{
 });
 tabsEl.addEventListener('click',e=>{
   const b=e.target.closest('.tab'); if(!b) return;
-  curDay=+b.dataset.day; render(); window.scrollTo(0,0);
+  curDate=b.dataset.date; curDay=assignedDay(curDate); render(); window.scrollTo(0,0);
 });
 dateEl.addEventListener('change',()=>{ if(!dateEl.value) return; curDate=dateEl.value; curDay=dayForDate(curDate); render(); });
 document.getElementById('todayBtn').onclick=()=>{ curDate=isoToday(); curDay=dayForDate(curDate); render(); };
@@ -659,6 +802,17 @@ main.addEventListener('click',e=>{
   if(id==='importBtn'){ doImport(); return; }
   if(id==='shuffleAll'){ shuffleAll(); return; }
   if(id==='resetPicks'){ resetPicks(); return; }
+  if(id==='addExtra'){ openExtra(t); return; }
+  if(id==='moveBtn'){ openMove(t); return; }
+  const rm=t.closest('.rmx');
+  if(rm){
+    const card=rm.closest('[data-ex]'), xid=card.dataset.ex, en=getEntry(true), o=en.ex[xid];
+    const has=o&&o.sets.some(x=>x.d||x.w||x.r||x.s||x.m||x.x);
+    if(has&&!confirm('Remove this extra and its logged sets?')) return;
+    en.extra=(en.extra||[]).filter(x=>x.id!==xid); delete en.ex[xid]; touch(en); renderPlan();
+    const b=document.getElementById('addExtra'); if(b) b.focus();
+    return;
+  }
   const sw=t.closest('.swap');
   if(sw){ openSheet(sw.closest('[data-slot]').dataset.slot,sw); return; }
   const tick=t.closest('.tick');
@@ -723,6 +877,7 @@ function doImport(){
     for(const k in p.entries){ const en=p.entries[k]; if(!S.entries[k]||(en.u||0)>(S.entries[k].u||0)){ S.entries[k]=en; n++; } }
     if(p.over) for(const k in p.over){ if(!(k in S.over)) S.over[k]=p.over[k]; }
     if(p.custom) for(const s in p.custom){ const have=(S.custom[s]||[]).map(x=>x.id); (S.custom[s]=S.custom[s]||[]); p.custom[s].forEach(x=>{ if(!have.includes(x.id)) S.custom[s].push(x); }); }
+    if(p.sched) for(const k in p.sched){ if(!(k in S.sched)) S.sched[k]=p.sched[k]; }
     rebuildMap(); persist(); msg.textContent='Restored '+n+' sessions.';
   }catch(e){ msg.textContent='That doesn’t look like a backup from this app.'; }
 }
